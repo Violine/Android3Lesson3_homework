@@ -23,4 +23,11 @@
         android:layout_height="wrap_content"
         android:text="PICK PHOTO"/>
 
+    <Button
+        android:text="Convert to PNG"
+        android:id="@+id/convert_to_png_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toBottomOf="@id/select_photo_button"/>
+
 </android.support.constraint.ConstraintLayout>

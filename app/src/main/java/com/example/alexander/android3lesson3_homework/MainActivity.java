@@ -8,9 +8,15 @@ import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.text.TextUtils;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import io.reactivex.BackpressureStrategy;
+import io.reactivex.Flowable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -61,6 +67,21 @@ public class MainActivity extends AppCompatActivity {
         pathTextView = findViewById(R.id.photo_path);
         selectPhotoButton = findViewById(R.id.select_photo_button);
         selectPhotoButton.setOnClickListener(v -> pickPhoto());
+        findViewById(R.id.convert_to_png_button).setOnClickListener (v ->
+                convertToPng(pathTextView.getText().toString()));
+    }
+
+    private void convertToPng(String s) {
+        if (!TextUtils.isEmpty(s)){
+            Flowable.create( e -> {
+
+            }, BackpressureStrategy.BUFFER)
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe();
+        } else {
+            Toast.makeText(this, "Сначала выберите файл", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void pickPhoto() {
