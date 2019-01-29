@@ -25,6 +25,8 @@ import java.io.IOException;
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
 import io.reactivex.Observable;
+import io.reactivex.ObservableEmitter;
+import io.reactivex.ObservableOnSubscribe;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
@@ -48,11 +50,12 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-                    Manifest.permission.READ_EXTERNAL_STORAGE)) {
+            if ((ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE)) || (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE))) {
             } else {
                 ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE},
                         MY_PERMISSIONS_REQUEST_READ_CONTACTS);
             }
         } else {
@@ -86,35 +89,33 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("CheckResult")
     private void convertToPng(String s) {
         if (!TextUtils.isEmpty(s)){
-            getObservableFromFile(s)
-                    .observeOn(Schedulers.computation())
+            getObservableBitmap(s)
+                    .map(bitmap -> {
+                        File convertedImage = new File(Environment.getExternalStorageDirectory()+"/convertedimg.png");
+                        FileOutputStream outStream=new FileOutputStream(convertedImage);
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 30, outStream);
+                        outStream.flush();
+                        outStream.close();
+                        return bitmap;
+                    })
+                    .observeOn(AndroidSchedulers.mainThread())
                     .subscribeOn(Schedulers.io())
-                    .subscribe(result -> {
-                        Toast.makeText(this, "s"+result.toString(), Toast.LENGTH_SHORT).show();
-                      });
+                    .subscribe(bitmap -> {
+                        Toast.makeText(this, "ГОТОВО "+bitmap.getByteCount(), Toast.LENGTH_SHORT).show();
+                    });
         } else {
             Toast.makeText(this,
                     "ВЫБЕРИТЕ ФАЙЛ", Toast.LENGTH_SHORT).show();
         }
     }
-//see https://stackoverflow.com/questions/44434583/rxjava-convert-byte-array-to-bitmap
-    public Observable<Boolean> getObservableFromFile(String path) {
-        return Observable.fromCallable(() -> {
-            try {
-                Bitmap bitmap = BitmapFactory.decodeFile("/sdcard/DCIM/DSC01387.JPG");
-                File convertedImage = new File(Environment.getExternalStorageDirectory()+"/convertedimg.png");
-                FileOutputStream outStream=new FileOutputStream(convertedImage);
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream);
-                outStream.flush();
-                outStream.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return true;
-        }).subscribeOn(Schedulers.io());
+
+    public Observable<Bitmap> getObservableBitmap(String path) {
+        return Observable.create(emitter -> {
+            Bitmap bitmap = BitmapFactory.decodeFile("/sdcard/DCIM/DSC01387.JPG");
+            emitter.onNext(bitmap);
+        });
     }
 
-    // see
     private void pickPhoto() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("image/*");
