@@ -1,10 +1,15 @@
 package com.example.alexander.android3lesson3_homework;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -13,9 +18,16 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
+import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.functions.Consumer;
+import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity {
@@ -71,19 +83,38 @@ public class MainActivity extends AppCompatActivity {
                 convertToPng(pathTextView.getText().toString()));
     }
 
+    @SuppressLint("CheckResult")
     private void convertToPng(String s) {
         if (!TextUtils.isEmpty(s)){
-            Flowable.create( e -> {
-
-            }, BackpressureStrategy.BUFFER)
+            getObservableFromFile(s)
+                    .observeOn(Schedulers.computation())
                     .subscribeOn(Schedulers.io())
-                    .observeOn(AndroidSchedulers.mainThread())
-                    .subscribe();
+                    .subscribe(result -> {
+                        Toast.makeText(this, "s"+result.toString(), Toast.LENGTH_SHORT).show();
+                      });
         } else {
-            Toast.makeText(this, "Сначала выберите файл", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,
+                    "ВЫБЕРИТЕ ФАЙЛ", Toast.LENGTH_SHORT).show();
         }
     }
+//see https://stackoverflow.com/questions/44434583/rxjava-convert-byte-array-to-bitmap
+    public Observable<Boolean> getObservableFromFile(String path) {
+        return Observable.fromCallable(() -> {
+            try {
+                Bitmap bitmap = BitmapFactory.decodeFile("/sdcard/DCIM/DSC01387.JPG");
+                File convertedImage = new File(Environment.getExternalStorageDirectory()+"/convertedimg.png");
+                FileOutputStream outStream=new FileOutputStream(convertedImage);
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream);
+                outStream.flush();
+                outStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return true;
+        }).subscribeOn(Schedulers.io());
+    }
 
+    // see
     private void pickPhoto() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("image/*");
