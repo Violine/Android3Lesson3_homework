@@ -14,18 +14,27 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
+import android.util.Log;
+import android.view.View;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
 import io.reactivex.Observable;
+import io.reactivex.ObservableEmitter;
+import io.reactivex.ObservableOnSubscribe;
 import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.Cancellable;
 import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
@@ -36,6 +45,9 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView pathTextView;
     private Button selectPhotoButton;
+    private Disposable disposable;
+    private ProgressBar progressBar;
+    FileOutputStream outStream;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,11 +60,12 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-                    Manifest.permission.READ_EXTERNAL_STORAGE)) {
+            if ((ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE)) || (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE))) {
             } else {
                 ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE},
                         MY_PERMISSIONS_REQUEST_READ_CONTACTS);
             }
         } else {
@@ -67,7 +80,7 @@ public class MainActivity extends AppCompatActivity {
             case MY_PERMISSIONS_REQUEST_READ_CONTACTS: {
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                  setUI();
+                    setUI();
                 } else {
                     Toast.makeText(this, "PERMISSION_DENIED", Toast.LENGTH_SHORT).show();
                 }
@@ -79,42 +92,74 @@ public class MainActivity extends AppCompatActivity {
         pathTextView = findViewById(R.id.photo_path);
         selectPhotoButton = findViewById(R.id.select_photo_button);
         selectPhotoButton.setOnClickListener(v -> pickPhoto());
-        findViewById(R.id.convert_to_png_button).setOnClickListener (v ->
+        findViewById(R.id.convert_cancel).setOnClickListener(v -> cancelConverting());
+        findViewById(R.id.convert_to_png_button).setOnClickListener(v ->
                 convertToPng(pathTextView.getText().toString()));
+        progressBar = findViewById(R.id.progressBar);
     }
 
     @SuppressLint("CheckResult")
     private void convertToPng(String s) {
-        if (!TextUtils.isEmpty(s)){
-            getObservableFromFile(s)
-                    .observeOn(Schedulers.computation())
-                    .subscribeOn(Schedulers.io())
-                    .subscribe(result -> {
-                        Toast.makeText(this, "s"+result.toString(), Toast.LENGTH_SHORT).show();
-                      });
+        if (!TextUtils.isEmpty(s)) {
+            disposable = getObservableBitmap(s)
+                    .map(bitmap -> {
+                        File convertedImage = new File(Environment.getExternalStorageDirectory() + "/convertedimg25.png");
+                        outStream = new FileOutputStream(convertedImage);
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 30, outStream);
+                        outStream.flush();
+                        outStream.close();
+                        return bitmap;
+                    })
+                    .doOnCancel(() -> {
+                        if (outStream!= null) outStream.close();
+                    })
+                    .subscribeOn(Schedulers.computation())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(bitmap -> {
+                                Toast.makeText(MainActivity.this, "WORK PROCESS END WITHOUT ERROR", Toast.LENGTH_SHORT).show();
+                                setProgressVisibly(false);
+                            },
+                            throwable -> {
+                                Toast.makeText(MainActivity.this, "PROCESS STOPPED ON ERROR", Toast.LENGTH_SHORT).show();
+                                setProgressVisibly(false);
+                            }, () -> {
+                                Toast.makeText(MainActivity.this, "ALL PROCESS END WITHOUT ERROR", Toast.LENGTH_SHORT).show();
+                                setProgressVisibly(false);
+                            }, o -> {
+                                setProgressVisibly(true);
+                                Toast.makeText(MainActivity.this, "PROCESS START", Toast.LENGTH_SHORT).show();
+                            });
         } else {
             Toast.makeText(this,
                     "ВЫБЕРИТЕ ФАЙЛ", Toast.LENGTH_SHORT).show();
         }
     }
-//see https://stackoverflow.com/questions/44434583/rxjava-convert-byte-array-to-bitmap
-    public Observable<Boolean> getObservableFromFile(String path) {
-        return Observable.fromCallable(() -> {
-            try {
-                Bitmap bitmap = BitmapFactory.decodeFile("/sdcard/DCIM/DSC01387.JPG");
-                File convertedImage = new File(Environment.getExternalStorageDirectory()+"/convertedimg.png");
-                FileOutputStream outStream=new FileOutputStream(convertedImage);
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream);
-                outStream.flush();
-                outStream.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return true;
-        }).subscribeOn(Schedulers.io());
+
+    private void setProgressVisibly(boolean visible) {
+        progressBar.setVisibility((visible) ? View.VISIBLE : View.INVISIBLE);
     }
 
-    // see
+    private void cancelConverting() {
+        if (disposable != null) {
+            disposable.dispose();
+        } else {
+            Toast.makeText(this, "PROCESS NOT STARTED", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    public Flowable<Bitmap> getObservableBitmap(String path) {
+        return Flowable.create(emitter -> {
+            FileInputStream stream = new FileInputStream("/sdcard/DCIM/DSC01387.JPG");
+            Bitmap bitmap = BitmapFactory.decodeStream(stream);
+            //   Bitmap bitmap = BitmapFactory.decodeFile("/sdcard/DCIM/DSC01387.JPG");
+            emitter.onNext(bitmap);
+            emitter.setCancellable(() -> {
+               stream.close();
+            });
+        }, BackpressureStrategy.BUFFER);
+
+    }
+
     private void pickPhoto() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("image/*");
