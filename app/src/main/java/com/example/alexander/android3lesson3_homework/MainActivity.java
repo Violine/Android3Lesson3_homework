@@ -47,7 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private Button selectPhotoButton;
     private Disposable disposable;
     private ProgressBar progressBar;
-    FileOutputStream outStream;
+    private FileOutputStream outStream;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -151,11 +151,9 @@ public class MainActivity extends AppCompatActivity {
         return Flowable.create(emitter -> {
             FileInputStream stream = new FileInputStream("/sdcard/DCIM/DSC01387.JPG");
             Bitmap bitmap = BitmapFactory.decodeStream(stream);
-            //   Bitmap bitmap = BitmapFactory.decodeFile("/sdcard/DCIM/DSC01387.JPG");
             emitter.onNext(bitmap);
-            emitter.setCancellable(() -> {
-               stream.close();
-            });
+            emitter.onComplete();
+            emitter.setCancellable(stream::close);
         }, BackpressureStrategy.BUFFER);
 
     }
